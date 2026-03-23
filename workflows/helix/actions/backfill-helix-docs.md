@@ -169,6 +169,9 @@ evidence extraction pass are complete for the relevant scope.
 
 ## PHASE 0 - Scope and Baseline
 
+0. **Context Recovery**: Re-read AGENTS.md so project instructions are fresh
+   in your working memory. After long sessions, context compaction may have
+   dropped critical project rules. This step is cheap insurance against drift.
 1. Determine the backfill scope.
 2. Verify upstream Beads is available.
    - If live `bd` access is missing or unhealthy, stop immediately.

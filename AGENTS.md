@@ -19,6 +19,11 @@ bd dolt remote -v     # Show configured Dolt remote, if any
 bash tests/helix-cli.sh  # Deterministic HELIX wrapper tests
 helix run             # Run bounded HELIX execution loop
 helix check           # Decide next HELIX action
+helix plan            # Create design document through iterative refinement
+helix polish          # Refine beads before implementation
+helix next            # Show recommended next bead (uses bv if available)
+helix review          # Fresh-eyes review of recent work
+helix spawn           # Launch multi-agent swarm (requires ntm)
 ```
 
 ## HELIX Workflow Notes
@@ -59,6 +64,9 @@ The plugin provides these skills (invocable as `/ddx:<name>`):
 - `/ddx:triage` — review beads vs repo state, improve and fill gaps
 - `/ddx:handoff` — review changes made by another agent/session
 - `/ddx:helix-alignment-review` — top-down reconciliation and drift analysis
+- `/ddx:plan` — create design document through iterative refinement
+- `/ddx:polish` — refine beads before implementation
+- `/ddx:experiment` — autonomous metric-driven optimization loop
 
 ## HELIX CLI
 
@@ -71,11 +79,18 @@ This repo now ships a small HELIX wrapper CLI:
 Useful commands:
 
 ```bash
+helix plan auth                       # create design document
+helix polish                          # refine beads before implementation
 helix run --review-every 5
 helix implement
 helix check repo
 helix align auth
 helix backfill repo
+helix next                            # show recommended next bead
+helix review                          # fresh-eyes review of last commit
+helix spawn --count 3                 # launch multi-agent swarm
+helix experiment bd-abc123            # one experiment iteration
+helix experiment --close              # squash-merge and close session
 ```
 
 `helix run` is the preferred operator loop. It:
@@ -140,6 +155,54 @@ cp -rf source dest          # NOT: cp -r source dest
 - `ssh` - use `-o BatchMode=yes` to fail instead of prompting
 - `apt-get` - use `-y` flag
 - `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
+
+## Destructive Command Guard
+
+NEVER run these commands without explicit user request:
+
+| Blocked | Safe Alternative |
+|---------|-----------------|
+| `git reset --hard` | `git stash` |
+| `git push --force` | `git push --force-with-lease` |
+| `git clean -f` | `git clean -i` or explicit file removal |
+| `git checkout .` / `git restore .` | Specify files explicitly |
+| `rm -rf /` or broad recursive deletes | Targeted removal with confirmation |
+
+Pre-commit hooks must remain enabled. Do not use `--no-verify`.
+
+## Plan-First Development
+
+For new features or major work:
+
+1. `helix plan [scope]` — create comprehensive design document
+2. `helix polish [scope]` — refine beads against the plan
+3. `helix run` — execute the implementation loop
+
+## Graph-Aware Routing (optional)
+
+If `bv` is installed, `helix implement` and `helix next` use dependency graph
+metrics to select the highest-impact bead. Install `bv` from
+github.com/Dicklesworthstone/beads_rust for smarter work ordering.
+
+## Swarm Execution (optional)
+
+If `ntm` is installed, `helix spawn [--count N]` launches multiple agents in
+tmux sessions with staggered starts. Agents are fungible — any agent picks any
+bead. Bead claiming via `bd update --claim` provides advisory locking.
+
+## Metric-Driven Optimization
+
+For performance tuning, bundle size reduction, or other measurable optimization:
+
+1. Create a `phase:iterate` bead with the optimization goal
+2. `helix experiment [bead-id|goal]` — runs one experiment iteration
+3. The `/ddx:experiment` skill loops the action autonomously
+4. All existing tests must pass after every iteration — tests are the spec
+5. Prefer simpler solutions; do not add complexity for marginal gains
+6. At session close, the experiment branch is squash-merged and performance
+   ratchet floors are updated if thresholds are met
+
+Experiments are operator-invoked. `helix check` does not auto-dispatch them.
 
 <!-- BEGIN BEADS INTEGRATION -->
 ## Issue Tracking with bd (beads)

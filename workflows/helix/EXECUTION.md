@@ -201,6 +201,101 @@ This harness:
 - verifies `helix run`, periodic alignment, auto-alignment, dry-run output, and
   installer behavior
 
+## Pre-Execution Pipeline
+
+Before the implementation loop, the recommended sequence for new work is:
+
+1. `helix plan [scope]` — create a comprehensive design document through
+   iterative refinement (recommended for new features or major work)
+2. `helix polish [scope]` — refine beads against the plan: deduplication,
+   coverage verification, acceptance criteria sharpening (recommended after
+   bead creation)
+3. `helix run` — execute the bounded implementation loop
+
+These steps are optional for small changes but strongly recommended for any
+scope that will produce more than a handful of beads.
+
+## Graph-Aware Routing
+
+When `bv` is available, `helix implement` injects dependency graph metrics
+(PageRank, betweenness centrality) into the agent prompt to inform Phase 2
+candidate ranking:
+
+- High PageRank + High Betweenness = critical bottleneck (prioritize)
+- Low PageRank + Low Betweenness = leaf work (safe to parallelize)
+
+When `bv` is absent, the existing `bd ready` ranking applies unchanged.
+
+`helix next` prints the recommended next bead without spawning an agent:
+
+```bash
+helix next          # uses bv if available, falls back to bd ready
+```
+
+## Fresh-Eyes Review
+
+After implementing a bead, `helix review` performs 1-3 self-review passes
+looking for bugs, integration issues, and security concerns with fresh
+perspective:
+
+```bash
+helix review                  # review last commit
+helix review bd-abc123        # review changes for a specific bead
+helix review src/auth/        # review specific files
+```
+
+## Swarm Execution
+
+`helix spawn` launches multiple agents in tmux sessions via `ntm`:
+
+```bash
+helix spawn                       # 2 agents, 30s stagger (default)
+helix spawn --count 3 --stagger 45  # 3 agents, 45s apart
+```
+
+- Staggered starts (default 30s apart) avoid thundering herd contention
+- All agents share the same `bd` tracker
+- Bead claiming via `bd update --claim` provides advisory locking
+- Agents are fungible — any agent picks any bead
+- Graceful fallback to single-agent `helix run` when `ntm` is absent
+
+## Experiment Loop
+
+`helix experiment` runs a single iteration of a metric-optimization loop for
+`phase:iterate` beads. Each invocation: hypothesize → edit → test → benchmark →
+keep/discard → log → exit.
+
+The loop is driven externally by the `/ddx:experiment` skill (analogous to how
+`/ddx:grind` drives repeated `implement` calls) or by the operator re-invoking
+the command. This preserves the bounded-action model.
+
+Experiments are operator-invoked only — `helix check` does not produce a
+`NEXT_ACTION: EXPERIMENT` code. The operator chooses `helix experiment` instead
+of `helix implement` for optimization work.
+
+The experiment action requires a clean worktree. The CLI prompts the user to
+commit uncommitted changes before proceeding.
+
+The optimization target is a HELIX metric definition at
+`docs/helix/06-iterate/metrics/<name>.yaml`. If one exists, the experiment
+reads it; if not, the experiment creates one during setup. This connects
+experiments to ratchets and monitoring through a shared metric definition.
+
+Session artifacts (`autoresearch.*`, `experiments/`) are untracked local files,
+gitignored on the experiment branch. At session close (`helix experiment
+--close`), the action squash-merges the experiment branch back to produce a
+single commit and records the result in the bead close comment. Experiments
+are execution-layer work tracked by beads, not canonical HELIX docs.
+
+`--close` is unique to the experiment command — it directs the action to
+execute session close (squash-merge, ratchet update, bead close) instead of
+running another iteration.
+
+Experiments validate governing artifacts at session setup and close (not
+per-iteration). Per-iteration guardrails are: scoped files, mandatory test
+passage, and the experiment's own constraints. All existing tests must pass
+after every kept iteration.
+
 ## Practical Rules
 
 - Keep execution bounded to one bead per implementation pass.

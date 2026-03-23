@@ -29,6 +29,21 @@ The rest of `workflows/helix/` is supporting guidance, templates, phase
 context, or examples. If a supporting document conflicts with the files above,
 follow the normative contract and update the supporting document.
 
+Additional actions extend the workflow without altering the core loop:
+
+- [plan.md](actions/plan.md) for iterative design document creation
+- [polish.md](actions/polish.md) for bead refinement before implementation
+- [fresh-eyes-review.md](actions/fresh-eyes-review.md) for post-implementation review
+- [experiment.md](actions/experiment.md) for metric-driven optimization (execution tracked by beads, not HELIX docs)
+
+These are operator-chosen entry points that do not participate in the
+check → NEXT_ACTION dispatch. If a supporting document conflicts with the
+core normative contract above, follow the contract.
+
+Supporting templates for metrics and reports:
+
+- [metric-definition.yaml](templates/metric-definition.yaml) for shared metric definitions referenced by ratchets, experiments, and monitoring
+
 ```mermaid
 graph TB
     subgraph "The HELIX Spiral"

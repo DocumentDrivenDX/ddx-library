@@ -112,6 +112,7 @@ Each phase directory contains artifacts directly (no `artifacts/` subdirectory):
 06-iterate/
 ├── README.md
 ├── metrics-dashboard.md
+├── metrics/                 # Shared metric definitions (YAML)
 ├── feedback-analysis.md
 ├── lessons-learned.md
 ├── alignment-reviews/

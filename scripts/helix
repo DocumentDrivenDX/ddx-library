@@ -37,6 +37,11 @@ Usage:
   helix check [--agent codex|claude] [scope]
   helix align [--agent codex|claude] [scope]
   helix backfill [--agent codex|claude] [scope]
+  helix plan [--agent codex|claude] [--rounds N] [scope]
+  helix polish [--agent codex|claude] [--rounds N] [scope]
+  helix next
+  helix review [--agent codex|claude] [scope]
+  helix spawn [--agent codex|claude] [--count N] [--stagger S]
   helix help
 
 Commands:
@@ -45,6 +50,11 @@ Commands:
   check       Run the bounded HELIX queue-health check
   align       Run reconcile-alignment for a scope (default: repo)
   backfill    Run documentation backfill for a scope (default: repo)
+  plan        Create a comprehensive design document through iterative refinement
+  polish      Refine beads before implementation (dedup, coverage, criteria)
+  next        Show recommended next bead (uses bv if available)
+  review      Fresh-eyes review of recent work
+  spawn       Launch multi-agent swarm (requires ntm)
 
 Options:
   --agent           Agent to use: codex or claude (default: ${agent})
@@ -167,10 +177,22 @@ inline_action() {
   fi
 }
 
+has_bv() {
+  command -v bv >/dev/null 2>&1
+}
+
+has_ntm() {
+  command -v ntm >/dev/null 2>&1
+}
+
 implementation_prompt() {
   local selector="${1:-}"
   local sandbox_note
   sandbox_note="$(beads_prompt_note)"
+  local bv_context=""
+  if has_bv; then
+    bv_context="$(cd "$target_root" && bv --robot-next 2>/dev/null || true)"
+  fi
   cat <<EOF
 Execute the following HELIX implementation action.
 $(inline_action "${helix_docs_root}/actions/implementation.md")
@@ -178,6 +200,9 @@ Use supporting references at ${helix_docs_root}/BEADS.md, ${helix_docs_root}/REA
 Execute in the current repository rooted at ${target_root}.
 ${sandbox_note}
 ${selector:+Implementation target: ${selector}.}
+${bv_context:+Graph-aware routing context (from bv):
+${bv_context}
+Use this to inform candidate ranking in Phase 2.}
 Follow the action exactly. Do the work — do not just describe what you would do.
 EOF
 }
@@ -226,6 +251,54 @@ ${sandbox_note}
 This is a writable live session: run real bd commands, update docs/helix/, and do not claim that you need another session unless a concrete command actually fails.
 Backfill scope: ${scope}.
 Return the required BACKFILL_STATUS, BACKFILL_REPORT, and RESEARCH_EPIC trailer lines exactly.
+Follow the action exactly. Do the work — do not just describe what you would do.
+EOF
+}
+
+plan_prompt() {
+  local scope="${1:-}"
+  local rounds="${2:-5}"
+  local sandbox_note
+  sandbox_note="$(beads_prompt_note)"
+  cat <<EOF
+Execute the following HELIX plan action.
+$(inline_action "${helix_docs_root}/actions/plan.md")
+Use supporting references at ${helix_docs_root}/README.md and phase docs under ${helix_docs_root}/phases/ as needed.
+Execute in the current repository rooted at ${target_root}.
+${sandbox_note}
+Plan scope: ${scope:-repo}.
+Refinement rounds: ${rounds}.
+Follow the action exactly. Do the work — do not just describe what you would do.
+EOF
+}
+
+polish_prompt() {
+  local scope="${1:-}"
+  local rounds="${2:-6}"
+  local sandbox_note
+  sandbox_note="$(beads_prompt_note)"
+  cat <<EOF
+Execute the following HELIX polish action.
+$(inline_action "${helix_docs_root}/actions/polish.md")
+Use supporting references at ${helix_docs_root}/BEADS.md and ${helix_docs_root}/README.md as needed.
+Execute in the current repository rooted at ${target_root}.
+${sandbox_note}
+Polish scope: ${scope:-all open beads}.
+Maximum refinement rounds: ${rounds}.
+Follow the action exactly. Do the work — do not just describe what you would do.
+EOF
+}
+
+review_prompt() {
+  local scope="${1:-last-commit}"
+  local sandbox_note
+  sandbox_note="$(beads_prompt_note)"
+  cat <<EOF
+Execute the following HELIX fresh-eyes review action.
+$(inline_action "${helix_docs_root}/actions/fresh-eyes-review.md")
+Execute in the current repository rooted at ${target_root}.
+${sandbox_note}
+Review scope: ${scope}.
 Follow the action exactly. Do the work — do not just describe what you would do.
 EOF
 }
@@ -365,6 +438,64 @@ run_backfill() {
       return 1
       ;;
   esac
+}
+
+run_plan() {
+  local scope="${1:-}"
+  local rounds="${2:-5}"
+  # Planning does NOT require live beads — it happens before bead creation
+  run_agent_prompt "$(plan_prompt "$scope" "$rounds")"
+}
+
+run_polish() {
+  local scope="${1:-}"
+  local rounds="${2:-6}"
+  if (( ! dry_run )); then
+    require_live_beads
+  fi
+  run_agent_prompt "$(polish_prompt "$scope" "$rounds")"
+}
+
+run_review() {
+  local scope="${1:-last-commit}"
+  run_agent_prompt "$(review_prompt "$scope")"
+}
+
+run_next() {
+  require_live_beads
+  need_cmd jq
+  if has_bv; then
+    (cd "$target_root" && bv --robot-next)
+  else
+    echo "bv not available, falling back to bd ready" >&2
+    bd_cmd ready --json | jq -r '.[0].id // "no ready beads"'
+  fi
+}
+
+run_spawn() {
+  local count="${1:-2}"
+  local stagger="${2:-30}"
+
+  if ! has_ntm; then
+    echo "helix: ntm not found; install it for swarm orchestration" >&2
+    echo "helix: falling back to single-agent helix run" >&2
+    run_loop
+    return
+  fi
+
+  need_cmd tmux
+  require_live_beads
+
+  local session_name="helix-$(date +%s)"
+  local i
+  for ((i = 0; i < count; i++)); do
+    if (( i > 0 )); then
+      sleep "$stagger"
+    fi
+    ntm spawn "${session_name}-${i}" -- \
+      bash "$library_root/scripts/helix" run --agent "$agent"
+  done
+  printf 'helix: spawned %d agents with session prefix %s\n' "$count" "$session_name" >&2
 }
 
 run_loop() {
@@ -514,6 +645,53 @@ main() {
       parse_common_flags "$@"
       set -- "${REMAINING_ARGS[@]}"
       run_backfill "${1:-repo}"
+      ;;
+    plan)
+      parse_common_flags "$@"
+      set -- "${REMAINING_ARGS[@]}"
+      local plan_rounds=5
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --rounds) plan_rounds="$2"; shift 2 ;;
+          *) break ;;
+        esac
+      done
+      run_plan "${1:-}" "$plan_rounds"
+      ;;
+    polish)
+      parse_common_flags "$@"
+      set -- "${REMAINING_ARGS[@]}"
+      local polish_rounds=6
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --rounds) polish_rounds="$2"; shift 2 ;;
+          *) break ;;
+        esac
+      done
+      run_polish "${1:-}" "$polish_rounds"
+      ;;
+    next)
+      parse_common_flags "$@"
+      run_next
+      ;;
+    review)
+      parse_common_flags "$@"
+      set -- "${REMAINING_ARGS[@]}"
+      run_review "${1:-last-commit}"
+      ;;
+    spawn)
+      parse_common_flags "$@"
+      set -- "${REMAINING_ARGS[@]}"
+      local spawn_count=2
+      local spawn_stagger=30
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --count) spawn_count="$2"; shift 2 ;;
+          --stagger) spawn_stagger="$2"; shift 2 ;;
+          *) break ;;
+        esac
+      done
+      run_spawn "$spawn_count" "$spawn_stagger"
       ;;
     *)
       echo "unknown command: $command" >&2

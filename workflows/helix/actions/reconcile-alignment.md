@@ -77,6 +77,9 @@ HELIX labels appropriate to the work phase.
 
 ## PHASE 0 - Review Bootstrap
 
+0. **Context Recovery**: Re-read AGENTS.md so project instructions are fresh
+   in your working memory. After long sessions, context compaction may have
+   dropped critical project rules. This step is cheap insurance against drift.
 1. Verify upstream Beads is available.
    - If live `bd` access is missing or unhealthy, stop immediately.
    - Do not run `bd init` or inspect alternate tracker sources from this action.

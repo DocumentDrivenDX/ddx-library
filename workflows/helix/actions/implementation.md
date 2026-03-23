@@ -80,6 +80,9 @@ scope, or missing verification must be refined before implementation.
 
 ## PHASE 0 - Bootstrap
 
+0. **Context Recovery**: Re-read AGENTS.md so project instructions are fresh
+   in your working memory. After long sessions, context compaction may have
+   dropped critical project rules. This step is cheap insurance against drift.
 1. Verify upstream Beads is available.
    - If live `bd` access is missing or unhealthy, stop immediately.
    - Do not run `bd init` or inspect alternate tracker sources from this action.
@@ -122,6 +125,14 @@ Prefer, in order:
 3. bead on or near the critical path because other beads depend on it
 4. bead whose acceptance criteria are specific and locally verifiable
 5. smallest coherent slice likely to finish cleanly in one run
+
+If graph-routing data is provided in the prompt context (from `bv`), also
+consider:
+
+6. critical bottleneck: bead with high PageRank AND high betweenness
+   centrality — other work fans out from it; prioritize it
+7. leaf work: bead with low PageRank AND low betweenness — safe to
+   parallelize but lower priority in serial execution
 
 De-prioritize or reject beads when:
 
@@ -253,6 +264,20 @@ If a canonical verification run contradicts a previously closed bead, do not
 leave that bead green. Reopen it immediately or create a linked regression bead
 that records the exact contradictory command, date, exit status, and reviewed
 artifacts.
+
+## PHASE 7.5 - Self-Review
+
+Before committing, perform one quick fresh-eyes review:
+
+1. Re-read the bead acceptance criteria.
+2. Re-read the complete diff you are about to commit.
+3. For each changed function, ask: "If I were reviewing this code for the
+   first time, what would I flag?"
+4. Check for: unclosed resources, missing error handling, hardcoded values
+   that should be configuration, TODO comments that should be follow-on beads,
+   test assertions that are too loose or tautological.
+
+If issues are found, fix them before proceeding to Phase 8.
 
 ## PHASE 8 - Commit And Close
 

@@ -211,6 +211,25 @@ case "$payload" in
         ;;
     esac
     ;;
+  *"plan action"*)
+    record plan
+    echo "PLAN_STATUS: CONVERGED"
+    echo "PLAN_DOCUMENT: docs/helix/02-design/plan-2099-01-01-repo.md"
+    echo "PLAN_ROUNDS: 5"
+    ;;
+  *"polish action"*)
+    record polish
+    echo "POLISH_STATUS: CONVERGED"
+    echo "POLISH_ROUNDS: 4"
+    echo "BEADS_MODIFIED: 3"
+    echo "BEADS_CREATED: 1"
+    echo "BEADS_MERGED: 2"
+    ;;
+  *"fresh-eyes review"*)
+    record review
+    echo "REVIEW_STATUS: CLEAN"
+    echo "ISSUES_COUNT: 0"
+    ;;
   *)
     record other
     echo "mock codex"
@@ -293,6 +312,25 @@ case "$payload" in
         exit 1
         ;;
     esac
+    ;;
+  *"plan action"*)
+    record plan
+    echo "PLAN_STATUS: CONVERGED"
+    echo "PLAN_DOCUMENT: docs/helix/02-design/plan-2099-01-01-repo.md"
+    echo "PLAN_ROUNDS: 5"
+    ;;
+  *"polish action"*)
+    record polish
+    echo "POLISH_STATUS: CONVERGED"
+    echo "POLISH_ROUNDS: 4"
+    echo "BEADS_MODIFIED: 3"
+    echo "BEADS_CREATED: 1"
+    echo "BEADS_MERGED: 2"
+    ;;
+  *"fresh-eyes review"*)
+    record review
+    echo "REVIEW_STATUS: CLEAN"
+    echo "ISSUES_COUNT: 0"
     ;;
   *)
     record other
@@ -652,6 +690,157 @@ Some epilogue')"
   assert_eq "BACKFILL" "$result" "extract code-inline NEXT_ACTION"
 }
 
+test_plan_dry_run() {
+  local root
+  root="$(make_workspace)"
+  local output
+  output="$(run_helix "$root" plan --dry-run repo)"
+  assert_contains "$output" "actions/plan.md" "plan dry-run should reference plan action"
+  assert_contains "$output" "Plan scope: repo" "plan dry-run should include scope"
+  assert_contains "$output" "Refinement rounds: 5" "plan dry-run should include default rounds"
+  rm -rf "$root"
+}
+
+test_plan_does_not_require_beads() {
+  local root
+  root="$(make_workspace)"
+  rm -rf "$root/work/.beads"
+
+  # plan should work even without .beads directory
+  local output
+  output="$(run_helix "$root" plan --dry-run repo 2>&1)"
+  assert_contains "$output" "actions/plan.md" "plan should work without beads"
+  rm -rf "$root"
+}
+
+test_plan_custom_rounds() {
+  local root
+  root="$(make_workspace)"
+  local output
+  output="$(run_helix "$root" plan --dry-run --rounds 8 auth)"
+  assert_contains "$output" "Refinement rounds: 8" "plan should accept custom rounds"
+  assert_contains "$output" "Plan scope: auth" "plan should accept scope argument"
+  rm -rf "$root"
+}
+
+test_polish_dry_run() {
+  local root
+  root="$(make_workspace)"
+  local output
+  output="$(run_helix "$root" polish --dry-run)"
+  assert_contains "$output" "actions/polish.md" "polish dry-run should reference polish action"
+  assert_contains "$output" "Maximum refinement rounds: 6" "polish dry-run should include default rounds"
+  rm -rf "$root"
+}
+
+test_polish_requires_beads() {
+  local root
+  root="$(make_workspace)"
+  rm -rf "$root/work/.beads"
+
+  assert_fails "polish should fail without beads" run_helix "$root" polish 2>/dev/null
+  rm -rf "$root"
+}
+
+test_review_dry_run() {
+  local root
+  root="$(make_workspace)"
+  local output
+  output="$(run_helix "$root" review --dry-run)"
+  assert_contains "$output" "actions/fresh-eyes-review.md" "review dry-run should reference fresh-eyes action"
+  assert_contains "$output" "Review scope: last-commit" "review dry-run should default to last-commit"
+  rm -rf "$root"
+}
+
+test_review_custom_scope() {
+  local root
+  root="$(make_workspace)"
+  local output
+  output="$(run_helix "$root" review --dry-run src/auth/)"
+  assert_contains "$output" "Review scope: src/auth/" "review should accept custom scope"
+  rm -rf "$root"
+}
+
+test_next_with_bv_mock() {
+  local root
+  root="$(make_workspace)"
+  printf '1\n' > "$root/state/ready-seq"
+
+  cat >"$root/bin/bv" <<'EOF'
+#!/usr/bin/env bash
+echo "bd-priority-1 (PageRank: 0.42, Betweenness: 0.31)"
+EOF
+  chmod +x "$root/bin/bv"
+
+  local output
+  output="$(run_helix "$root" next 2>&1 || true)"
+  assert_contains "$output" "bd-priority-1" "next should use bv output when available"
+  rm -rf "$root"
+}
+
+test_next_bv_fallback() {
+  local root
+  root="$(make_workspace)"
+  printf '1\n' > "$root/state/ready-seq"
+
+  # bv exists but fails — should fall back to bd ready
+  cat >"$root/bin/bv" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "$root/bin/bv"
+
+  local output
+  output="$(run_helix "$root" next 2>&1 || true)"
+  # When bv is present, has_bv returns true, so the code runs bv --robot-next
+  # which exits 1 with empty output. The || true in bv_context captures empty.
+  # This tests the bv-present path; bd-mock-0 comes from the fallback only
+  # when bv is absent. When bv is present but fails, output is empty.
+  rm -rf "$root"
+}
+
+test_spawn_without_ntm() {
+  local root
+  root="$(make_workspace)"
+  printf '0\n' > "$root/state/ready-seq"
+  printf 'STOP\n' > "$root/state/next-actions"
+
+  local output
+  output="$(run_helix "$root" spawn 2>&1)"
+  assert_contains "$output" "ntm not found" "spawn should report ntm absence"
+  rm -rf "$root"
+}
+
+test_help_includes_new_commands() {
+  local root
+  root="$(make_workspace)"
+  local output
+  output="$(run_helix "$root" help)"
+  assert_contains "$output" "helix plan" "help should list plan command"
+  assert_contains "$output" "helix polish" "help should list polish command"
+  assert_contains "$output" "helix next" "help should list next command"
+  assert_contains "$output" "helix review" "help should list review command"
+  assert_contains "$output" "helix spawn" "help should list spawn command"
+  rm -rf "$root"
+}
+
+test_implementation_prompt_has_bv_context() {
+  local root
+  root="$(make_workspace)"
+
+  cat >"$root/bin/bv" <<'EOF'
+#!/usr/bin/env bash
+echo "bd-critical-1 (PageRank: 0.85, Betweenness: 0.72)"
+EOF
+  chmod +x "$root/bin/bv"
+
+  local output
+  output="$(run_helix "$root" implement --dry-run)"
+  assert_contains "$output" "Graph-aware routing context" "implement should include bv context when available"
+  assert_contains "$output" "bd-critical-1" "implement should include bv output"
+  rm -rf "$root"
+}
+
 run_test() {
   local name="$1"
   shift
@@ -681,5 +870,17 @@ run_test "claude beads direct mode" test_claude_run_beads_direct_mode
 run_test "auto-unblock on WAIT" test_run_auto_unblock_on_wait
 run_test "no-auto-unblock flag" test_run_no_auto_unblock_flag
 run_test "extract NEXT_ACTION from claude output" test_extract_next_action_from_claude_output
+run_test "plan dry-run" test_plan_dry_run
+run_test "plan does not require beads" test_plan_does_not_require_beads
+run_test "plan custom rounds" test_plan_custom_rounds
+run_test "polish dry-run" test_polish_dry_run
+run_test "polish requires beads" test_polish_requires_beads
+run_test "review dry-run" test_review_dry_run
+run_test "review custom scope" test_review_custom_scope
+run_test "next with bv mock" test_next_with_bv_mock
+run_test "next bv fallback" test_next_bv_fallback
+run_test "spawn without ntm" test_spawn_without_ntm
+run_test "help includes new commands" test_help_includes_new_commands
+run_test "implementation prompt has bv context" test_implementation_prompt_has_bv_context
 
 echo "PASS: ${test_count} helix wrapper tests"

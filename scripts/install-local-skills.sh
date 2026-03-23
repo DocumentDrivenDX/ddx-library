@@ -45,6 +45,8 @@ EOF
 
 install_pair "helix-workflow" "$repo_root/skills/helix"
 install_pair "helix-alignment-review" "$repo_root/skills/helix-alignment-review"
+install_pair "plan-workflow" "$repo_root/skills/plan"
+install_pair "polish-workflow" "$repo_root/skills/polish"
 
 beads_skill_src="$(ls -d "$HOME"/go/pkg/mod/github.com/steveyegge/beads@*/claude-plugin/skills/beads 2>/dev/null | sort -V | tail -1 || true)"
 if [[ -n "$beads_skill_src" ]]; then

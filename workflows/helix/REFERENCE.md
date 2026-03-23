@@ -15,6 +15,11 @@ dun:
 - [check.md](actions/check.md): queue-drain decision
 - [reconcile-alignment.md](actions/reconcile-alignment.md): top-down review
 - [backfill-helix-docs.md](actions/backfill-helix-docs.md): conservative reconstruction
+- [plan.md](actions/plan.md): iterative design document creation
+- [polish.md](actions/polish.md): bead refinement before implementation
+- [fresh-eyes-review.md](actions/fresh-eyes-review.md): post-implementation review
+- [experiment.md](actions/experiment.md): metric-driven optimization iteration
+- [metric-definition.yaml](templates/metric-definition.yaml): shared metric definitions
 
 ## Phase Summary
 
@@ -48,7 +53,7 @@ bd init
 scripts/install-local-skills.sh
 ```
 
-### Commands
+### Execution Commands
 
 ```bash
 helix run
@@ -57,6 +62,21 @@ helix implement bd-abc123
 helix check repo
 helix align repo
 helix backfill repo
+```
+
+### Planning and Quality Commands
+
+```bash
+helix plan [scope]                    # create design document
+helix plan --rounds 8 auth            # more refinement rounds
+helix polish [scope]                  # refine beads before implementation
+helix polish --rounds 10              # more polish rounds
+helix next                            # recommended next bead (uses bv if available)
+helix review [scope]                  # fresh-eyes review of recent work
+helix spawn                           # launch multi-agent swarm (requires ntm)
+helix spawn --count 3 --stagger 45    # 3 agents, 45s apart
+helix experiment [bead-id|goal]       # one experiment iteration
+helix experiment --close              # squash-merge and close session
 ```
 
 ### Beads
@@ -86,6 +106,8 @@ Recommended labels:
 
 ## Decision Guide
 
+- Starting new work or a large scope:
+  run `helix plan`, then `helix polish`, then `helix run`.
 - Ready execution beads exist:
   run `implementation` or `helix run`.
 - No ready execution bead, but the planning stack exists and next work is
@@ -97,6 +119,8 @@ Recommended labels:
   stop and wait.
 - The queue drains:
   run `check`, not a blind loop and not `bd list --ready`.
+- After implementing a bead:
+  run `helix review` for fresh-eyes quality check.
 
 ## Artifact Inputs
 
