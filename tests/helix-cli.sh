@@ -230,6 +230,14 @@ case "$payload" in
     echo "REVIEW_STATUS: CLEAN"
     echo "ISSUES_COUNT: 0"
     ;;
+  *"experiment action"*)
+    record experiment
+    echo "EXPERIMENT_STATUS: ITERATION_COMPLETE"
+    echo "EXPERIMENT_ITERATIONS: 1"
+    echo "EXPERIMENT_KEPT: 0"
+    echo "EXPERIMENT_BEST: test_runtime=4.2s (-0.0% vs baseline)"
+    echo "EXPERIMENT_CONFIDENCE: 0.0"
+    ;;
   *)
     record other
     echo "mock codex"
@@ -331,6 +339,14 @@ case "$payload" in
     record review
     echo "REVIEW_STATUS: CLEAN"
     echo "ISSUES_COUNT: 0"
+    ;;
+  *"experiment action"*)
+    record experiment
+    echo "EXPERIMENT_STATUS: ITERATION_COMPLETE"
+    echo "EXPERIMENT_ITERATIONS: 1"
+    echo "EXPERIMENT_KEPT: 0"
+    echo "EXPERIMENT_BEST: test_runtime=4.2s (-0.0% vs baseline)"
+    echo "EXPERIMENT_CONFIDENCE: 0.0"
     ;;
   *)
     record other
@@ -841,6 +857,61 @@ EOF
   rm -rf "$root"
 }
 
+test_experiment_dry_run() {
+  local root
+  root="$(make_workspace)"
+  local output
+  output="$(run_helix "$root" experiment --dry-run)"
+  assert_contains "$output" "actions/experiment.md" "experiment dry-run should reference experiment action"
+  assert_contains "$output" "Experiment target" "experiment dry-run should include experiment target"
+  rm -rf "$root"
+}
+
+test_experiment_requires_beads() {
+  local root
+  root="$(make_workspace)"
+  rm -rf "$root/work/.beads"
+
+  assert_fails "experiment should fail without beads" run_helix "$root" experiment 2>/dev/null
+  rm -rf "$root"
+}
+
+test_experiment_requires_clean_worktree() {
+  local root
+  root="$(make_workspace)"
+  echo dirty > "$root/work/dirty.txt" && cd "$root/work" && git add dirty.txt
+
+  local output
+  if output="$(run_helix "$root" experiment 2>&1)"; then
+    fail "experiment should fail with uncommitted changes"
+  fi
+
+  local found=0
+  if [[ "$output" == *"uncommitted changes"* ]] || [[ "$output" == *"please commit"* ]]; then
+    found=1
+  fi
+  [[ "$found" -eq 1 ]] || fail "experiment should mention uncommitted changes or please commit"
+  rm -rf "$root"
+}
+
+test_experiment_close_dry_run() {
+  local root
+  root="$(make_workspace)"
+  local output
+  output="$(run_helix "$root" experiment --dry-run --close)"
+  assert_contains "$output" "CLOSE SESSION" "experiment close dry-run should include CLOSE SESSION"
+  rm -rf "$root"
+}
+
+test_help_includes_experiment() {
+  local root
+  root="$(make_workspace)"
+  local output
+  output="$(run_helix "$root" help)"
+  assert_contains "$output" "experiment" "help should include experiment"
+  rm -rf "$root"
+}
+
 run_test() {
   local name="$1"
   shift
@@ -882,5 +953,10 @@ run_test "next bv fallback" test_next_bv_fallback
 run_test "spawn without ntm" test_spawn_without_ntm
 run_test "help includes new commands" test_help_includes_new_commands
 run_test "implementation prompt has bv context" test_implementation_prompt_has_bv_context
+run_test "experiment dry-run" test_experiment_dry_run
+run_test "experiment requires beads" test_experiment_requires_beads
+run_test "experiment requires clean worktree" test_experiment_requires_clean_worktree
+run_test "experiment close dry-run" test_experiment_close_dry_run
+run_test "help includes experiment" test_help_includes_experiment
 
 echo "PASS: ${test_count} helix wrapper tests"
