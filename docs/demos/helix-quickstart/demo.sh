@@ -9,6 +9,7 @@
 #   5. Verify: tests pass, app runs
 #   6. Review: /review critically reviews all work products
 #   7. Triage: /triage identifies gaps and creates follow-up beads
+#   8. Experiment: metric-driven optimization iteration on test runtime
 #
 # Every artifact is created by Claude. Beads drive the work.
 #
@@ -274,6 +275,93 @@ SETTINGS
   run br list --all
   sleep 2
 
+  # ── ACT 8: Experiment ──────────────────────────────────
+  narrate "ACT 8: Experiment"
+
+  echo "Creating an iterate bead for test-runtime optimization..."
+  echo ""
+  run br create "Optimize test suite startup time — reduce wall-clock time of npm test" \
+    --type task --priority 2
+  B_EXP=$(br list --json | jq -r '[.[] | select(.status == "open")] | sort_by(.created_at) | last | .id')
+  br label add -l helix "$B_EXP" >/dev/null
+  br label add -l phase:iterate "$B_EXP" >/dev/null
+  echo "  Experiment bead: $B_EXP"
+  echo ""
+  sleep 2
+
+  # Create the metric definition
+  mkdir -p docs/helix/06-iterate/metrics
+  cat > docs/helix/06-iterate/metrics/test-runtime.yaml <<'METRIC_DEF'
+name: test-runtime
+description: Wall-clock time for the full test suite (npm test)
+unit: seconds
+direction: lower
+command: |
+  start=$(date +%s%N)
+  npm test >/dev/null 2>&1
+  end=$(date +%s%N)
+  elapsed=$(echo "scale=3; ($end - $start) / 1000000000" | bc)
+  echo "METRIC test-runtime=$elapsed"
+tolerance: 10%
+labels:
+  area: testing
+  phase: iterate
+METRIC_DEF
+  echo "── docs/helix/06-iterate/metrics/test-runtime.yaml ──"
+  cat docs/helix/06-iterate/metrics/test-runtime.yaml
+  echo ""
+  sleep 2
+
+  git add docs/helix/06-iterate/metrics/test-runtime.yaml
+  git commit -m "docs: add test-runtime metric definition" --allow-empty || true
+  sleep 1
+
+  # Run the experiment via Claude — setup + one iteration
+  claude_run <<'EXPERIMENT_PROMPT'
+You are running one experiment iteration to optimize test suite startup time.
+
+Bead: use br to find the open phase:iterate bead and claim it with br update <id> --claim.
+
+Steps:
+1. Create branch experiment/test-runtime
+2. Add session gitignore entries (autoresearch.md, autoresearch.sh, autoresearch.jsonl, experiments/) and commit
+3. Create autoresearch.sh that measures npm test wall-clock time and prints METRIC test-runtime=<seconds>. Make it executable.
+4. Run ./autoresearch.sh to get baseline
+5. Create autoresearch.jsonl with a config line and the baseline result
+6. Look at tests/convert.test.js and try ONE optimization to reduce startup time (e.g., reduce redundant requires, simplify test structure, or use a faster assertion pattern). Only modify tests/convert.test.js.
+7. Run npm test to verify tests still pass
+8. Run ./autoresearch.sh to measure after
+9. Log the result to autoresearch.jsonl
+10. If improved, commit the change. If not, revert tests/convert.test.js.
+
+Keep it simple — this is a demo. Print a short summary at the end.
+Metric definition: docs/helix/06-iterate/metrics/test-runtime.yaml
+EXPERIMENT_PROMPT
+
+  # Show the JSONL log
+  if [[ -f autoresearch.jsonl ]]; then
+    echo "── autoresearch.jsonl (experiment log) ──"
+    cat autoresearch.jsonl
+    echo ""
+    sleep 2
+  fi
+
+  # Show final bead status
+  echo ""
+  echo "Experiment bead status:"
+  run br show "$B_EXP"
+  sleep 2
+
+  # Clean up experiment branch
+  local current_branch
+  current_branch=$(git branch --show-current)
+  if [[ "$current_branch" == experiment/* ]]; then
+    git checkout main 2>/dev/null || git checkout - 2>/dev/null || true
+  fi
+  rm -f autoresearch.md autoresearch.sh autoresearch.jsonl
+  rm -rf experiments/
+  git branch -D experiment/test-runtime 2>/dev/null || true
+
   narrate "Demo complete!"
   echo ""
   echo "What you just saw:"
@@ -282,6 +370,7 @@ SETTINGS
   echo "  3. Each bead executed in phase order: story -> design -> tests -> code"
   echo "  4. Tests pass, app runs, acceptance criteria verified"
   echo "  5. Review found gaps, triage created follow-up beads"
+  echo "  6. Experiment optimized test runtime with metric-driven iteration"
   echo ""
   echo "One seed. Beads drive. HELIX delivers."
   echo ""
