@@ -41,6 +41,7 @@ Usage:
   helix polish [--agent codex|claude] [--rounds N] [scope]
   helix next
   helix review [--agent codex|claude] [scope]
+  helix experiment [--agent codex|claude] [--close] [bead-id|goal]
   helix spawn [--agent codex|claude] [--count N] [--stagger S]
   helix help
 
@@ -54,6 +55,7 @@ Commands:
   polish      Refine beads before implementation (dedup, coverage, criteria)
   next        Show recommended next bead (uses bv if available)
   review      Fresh-eyes review of recent work
+  experiment  Run one experiment iteration for metric-driven optimization
   spawn       Launch multi-agent swarm (requires ntm)
 
 Options:
@@ -301,6 +303,42 @@ ${sandbox_note}
 Review scope: ${scope}.
 Follow the action exactly. Do the work — do not just describe what you would do.
 EOF
+}
+
+experiment_prompt() {
+  local target="${1:-}"
+  local close="${2:-0}"
+  local sandbox_note
+  sandbox_note="$(beads_prompt_note)"
+  cat <<EOF
+Execute the following HELIX experiment action.
+$(inline_action "${helix_docs_root}/actions/experiment.md")
+Use supporting references at ${helix_docs_root}/BEADS.md, ${helix_docs_root}/README.md, and ${helix_docs_root}/ratchets.md as needed.
+Execute in the current repository rooted at ${target_root}.
+${sandbox_note}
+Experiment target: ${target:-auto-select from ready phase:iterate beads}.
+${close:+CLOSE SESSION: Execute Phase 3 (Session Close) — squash-merge the experiment branch, update ratchet floors, and close the bead. Do not run another iteration.}
+Follow the action exactly. Do the work — do not just describe what you would do.
+EOF
+}
+
+require_clean_worktree() {
+  if ! (cd "$target_root" && git diff --quiet && git diff --cached --quiet); then
+    echo "helix: worktree has uncommitted changes" >&2
+    echo "helix: please commit your changes before starting an experiment" >&2
+    echo "helix: experiment needs a clean worktree to safely branch and revert" >&2
+    return 1
+  fi
+}
+
+run_experiment() {
+  local target="${1:-}"
+  local close="${2:-0}"
+  if (( ! dry_run )); then
+    require_live_beads
+    require_clean_worktree
+  fi
+  run_agent_prompt "$(experiment_prompt "$target" "$close")"
 }
 
 helix_ready_count() {
@@ -692,6 +730,18 @@ main() {
         esac
       done
       run_spawn "$spawn_count" "$spawn_stagger"
+      ;;
+    experiment)
+      parse_common_flags "$@"
+      set -- "${REMAINING_ARGS[@]}"
+      local experiment_close=0
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --close) experiment_close=1; shift ;;
+          *) break ;;
+        esac
+      done
+      run_experiment "${1:-}" "$experiment_close"
       ;;
     *)
       echo "unknown command: $command" >&2
