@@ -135,6 +135,7 @@ run_agent_prompt() {
   local prompt="$1"
   local prompt_bytes
   prompt_bytes="$(printf '%s' "$prompt" | wc -c)"
+  local agent_timeout="${HELIX_AGENT_TIMEOUT:-300}"
 
   case "$agent" in
     codex)
@@ -162,13 +163,37 @@ run_agent_prompt() {
         fi
       else
         if (( ! quiet )); then
-          printf 'helix: [%s] claude -p --permission-mode bypassPermissions --dangerously-skip-permissions --no-session-persistence <prompt %s bytes>\n' "$(date +%H:%M:%S)" "$prompt_bytes" >&2
+          printf 'helix: [%s] claude -p <prompt %s bytes> (timeout %ss)\n' "$(date +%H:%M:%S)" "$prompt_bytes" "$agent_timeout" >&2
         fi
+        local claude_pid
         (cd "$target_root" && printf '%s' "$prompt" | run_with_beads_env claude -p \
           --permission-mode bypassPermissions \
           --dangerously-skip-permissions \
           --no-session-persistence \
-          --verbose)
+          --verbose) &
+        claude_pid=$!
+
+        # Watchdog: periodic heartbeat + timeout
+        local elapsed=0
+        while kill -0 "$claude_pid" 2>/dev/null; do
+          sleep 10
+          elapsed=$((elapsed + 10))
+          if (( ! quiet )); then
+            # Show child process tree as heartbeat
+            local child_info
+            child_info="$(ps --no-headers -o args -p $(pgrep -P "$claude_pid" 2>/dev/null | head -1) 2>/dev/null | head -c 80 || true)"
+            printf 'helix: [%s] agent running (%ss)%s\n' \
+              "$(date +%H:%M:%S)" "$elapsed" \
+              "${child_info:+ — $child_info}" >&2
+          fi
+          if (( elapsed >= agent_timeout )); then
+            printf 'helix: [%s] agent timeout after %ss — killing\n' "$(date +%H:%M:%S)" "$elapsed" >&2
+            kill "$claude_pid" 2>/dev/null
+            wait "$claude_pid" 2>/dev/null
+            return 1
+          fi
+        done
+        wait "$claude_pid"
       fi
       ;;
     *)
