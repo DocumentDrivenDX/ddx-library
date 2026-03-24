@@ -165,23 +165,51 @@ run_agent_prompt() {
         if (( ! quiet )); then
           printf 'helix: [%s] claude -p <prompt %s bytes> (timeout %ss)\n' "$(date +%H:%M:%S)" "$prompt_bytes" "$agent_timeout" >&2
         fi
+
         local claude_pid
-        (cd "$target_root" && printf '%s' "$prompt" | run_with_beads_env claude -p \
-          --permission-mode bypassPermissions \
-          --dangerously-skip-permissions \
-          --no-session-persistence \
-          --verbose) &
+        if (( ! quiet )) && command -v jq >/dev/null 2>&1; then
+          # Stream JSON mode: show live tool-call progress on stderr,
+          # emit final text result on stdout.
+          (cd "$target_root" && printf '%s' "$prompt" | run_with_beads_env claude -p \
+            --permission-mode bypassPermissions \
+            --dangerously-skip-permissions \
+            --no-session-persistence \
+            --output-format stream-json \
+            --verbose \
+          | while IFS= read -r line; do
+              # Show tool names as they happen
+              tool_name="$(printf '%s' "$line" | jq -r '
+                select(.type == "assistant")
+                | .message.content[]?
+                | select(.type == "tool_use")
+                | .name // empty
+              ' 2>/dev/null || true)"
+              if [[ -n "$tool_name" ]]; then
+                printf 'helix: [%s] → %s\n' "$(date +%H:%M:%S)" "$tool_name" >&2
+              fi
+              # Emit final result text to stdout
+              result="$(printf '%s' "$line" | jq -r '
+                select(.type == "result") | .result // empty
+              ' 2>/dev/null || true)"
+              if [[ -n "$result" ]]; then
+                printf '%s\n' "$result"
+              fi
+            done) &
+        else
+          # Quiet / no jq: plain text mode
+          (cd "$target_root" && printf '%s' "$prompt" | run_with_beads_env claude -p \
+            --permission-mode bypassPermissions \
+            --dangerously-skip-permissions \
+            --no-session-persistence \
+            --verbose) &
+        fi
         claude_pid=$!
 
-        # Watchdog: periodic heartbeat + timeout
+        # Watchdog: timeout
         local elapsed=0
         while kill -0 "$claude_pid" 2>/dev/null; do
           sleep 10
           elapsed=$((elapsed + 10))
-          if (( ! quiet )); then
-            printf 'helix: [%s] agent working (%ss)\n' \
-              "$(date +%H:%M:%S)" "$elapsed" >&2
-          fi
           if (( elapsed >= agent_timeout )); then
             printf 'helix: [%s] agent timeout after %ss — killing\n' "$(date +%H:%M:%S)" "$elapsed" >&2
             kill "$claude_pid" 2>/dev/null
@@ -201,13 +229,7 @@ run_agent_prompt() {
 
 inline_action() {
   local action_file="$1"
-  if [[ "$agent" == "claude" ]] && [[ -f "$action_file" ]]; then
-    printf '\n<action>\n'
-    cat "$action_file"
-    printf '\n</action>\n'
-  else
-    printf 'Use the action at %s.\n' "$action_file"
-  fi
+  printf 'Read and follow the action at %s.\n' "$action_file"
 }
 
 has_bv() {
