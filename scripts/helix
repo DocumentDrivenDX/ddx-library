@@ -179,12 +179,8 @@ run_agent_prompt() {
           sleep 10
           elapsed=$((elapsed + 10))
           if (( ! quiet )); then
-            # Show child process tree as heartbeat
-            local child_info
-            child_info="$(ps --no-headers -o args -p $(pgrep -P "$claude_pid" 2>/dev/null | head -1) 2>/dev/null | head -c 80 || true)"
-            printf 'helix: [%s] agent running (%ss)%s\n' \
-              "$(date +%H:%M:%S)" "$elapsed" \
-              "${child_info:+ — $child_info}" >&2
+            printf 'helix: [%s] agent working (%ss)\n' \
+              "$(date +%H:%M:%S)" "$elapsed" >&2
           fi
           if (( elapsed >= agent_timeout )); then
             printf 'helix: [%s] agent timeout after %ss — killing\n' "$(date +%H:%M:%S)" "$elapsed" >&2
