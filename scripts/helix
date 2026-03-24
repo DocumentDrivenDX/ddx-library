@@ -147,7 +147,7 @@ run_agent_prompt() {
         fi
       else
         if (( ! quiet )); then
-          printf 'helix: codex exec --progress-cursor -C %s --ephemeral <prompt %s bytes>\n' "$target_root" "$prompt_bytes" >&2
+          printf 'helix: [%s] codex exec --progress-cursor -C %s --ephemeral <prompt %s bytes>\n' "$(date +%H:%M:%S)" "$target_root" "$prompt_bytes" >&2
         fi
         run_with_beads_env codex --dangerously-bypass-approvals-and-sandbox exec --progress-cursor -C "$target_root" --ephemeral "$prompt"
       fi
@@ -162,7 +162,7 @@ run_agent_prompt() {
         fi
       else
         if (( ! quiet )); then
-          printf 'helix: claude -p --permission-mode bypassPermissions --dangerously-skip-permissions --no-session-persistence <prompt %s bytes>\n' "$prompt_bytes" >&2
+          printf 'helix: [%s] claude -p --permission-mode bypassPermissions --dangerously-skip-permissions --no-session-persistence <prompt %s bytes>\n' "$(date +%H:%M:%S)" "$prompt_bytes" >&2
         fi
         (cd "$target_root" && printf '%s' "$prompt" | run_with_beads_env claude -p \
           --permission-mode bypassPermissions \
