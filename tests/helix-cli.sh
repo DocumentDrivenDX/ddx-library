@@ -266,6 +266,12 @@ if [[ "${MOCK_EXPECT_BEADS_DIRECT:-0}" == "1" && "${BEADS_DOLT_SERVER_MODE:-}" !
   exit 1
 fi
 
+if [[ "${MOCK_CLAUDE_SLEEP:-0}" -gt 0 ]]; then
+  sleep "$MOCK_CLAUDE_SLEEP" &
+  wait $!
+  exit 0
+fi
+
 stdin_payload=""
 if ! [[ -t 0 ]]; then
   stdin_payload="$(cat)"
@@ -918,6 +924,21 @@ test_help_includes_experiment() {
   rm -rf "$root"
 }
 
+test_claude_agent_timeout_kills_process() {
+  local root
+  root="$(make_workspace)"
+  printf '1\n' > "$root/state/ready-seq"
+
+  local output
+  if output="$(HELIX_AGENT_TIMEOUT=1 MOCK_CLAUDE_SLEEP=30 run_helix "$root" run --claude 2>&1)"; then
+    fail "claude run should fail when agent times out"
+  fi
+
+  assert_contains "$output" "agent timeout after" "run should report agent timeout"
+  assert_contains "$output" "killing" "run should report killing the agent"
+  rm -rf "$root"
+}
+
 run_test() {
   local name="$1"
   shift
@@ -964,5 +985,6 @@ run_test "experiment requires beads" test_experiment_requires_beads
 run_test "experiment requires clean worktree" test_experiment_requires_clean_worktree
 run_test "experiment close dry-run" test_experiment_close_dry_run
 run_test "help includes experiment" test_help_includes_experiment
+run_test "claude agent timeout kills process" test_claude_agent_timeout_kills_process
 
 echo "PASS: ${test_count} helix wrapper tests"
