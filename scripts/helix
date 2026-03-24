@@ -23,6 +23,7 @@ max_cycles=0
 auto_align=1
 auto_unblock=1
 dry_run=0
+quiet=0
 beads_sandbox=0
 
 if [[ "${BEADS_DOLT_SERVER_MODE:-1}" == "0" ]]; then
@@ -67,6 +68,7 @@ Options:
   --no-auto-align   Do not auto-run alignment when check returns ALIGN
   --no-auto-unblock Do not attempt implementation when check returns WAIT
   --dry-run         Print the agent command instead of executing it
+  --quiet, -q       Suppress progress output (command echo, prompt sizes)
 
 Environment:
   HELIX_AGENT         Default agent (codex or claude)
@@ -131,6 +133,8 @@ require_live_beads() {
 
 run_agent_prompt() {
   local prompt="$1"
+  local prompt_bytes
+  prompt_bytes="$(printf '%s' "$prompt" | wc -c)"
 
   case "$agent" in
     codex)
@@ -142,6 +146,9 @@ run_agent_prompt() {
           printf 'codex --dangerously-bypass-approvals-and-sandbox exec --progress-cursor -C %q --ephemeral %q\n' "$target_root" "$prompt"
         fi
       else
+        if (( ! quiet )); then
+          printf 'helix: codex exec --progress-cursor -C %s --ephemeral <prompt %s bytes>\n' "$target_root" "$prompt_bytes" >&2
+        fi
         run_with_beads_env codex --dangerously-bypass-approvals-and-sandbox exec --progress-cursor -C "$target_root" --ephemeral "$prompt"
       fi
       ;;
@@ -154,11 +161,13 @@ run_agent_prompt() {
           printf 'cd %q && claude -p --permission-mode bypassPermissions --dangerously-skip-permissions --no-session-persistence %q\n' "$target_root" "$prompt"
         fi
       else
-        (cd "$target_root" && run_with_beads_env claude -p \
+        if (( ! quiet )); then
+          printf 'helix: claude -p --permission-mode bypassPermissions --dangerously-skip-permissions --no-session-persistence <prompt %s bytes>\n' "$prompt_bytes" >&2
+        fi
+        (cd "$target_root" && printf '%s' "$prompt" | run_with_beads_env claude -p \
           --permission-mode bypassPermissions \
           --dangerously-skip-permissions \
-          --no-session-persistence \
-          "$prompt")
+          --no-session-persistence)
       fi
       ;;
     *)
@@ -385,6 +394,10 @@ parse_common_flags() {
         ;;
       --dry-run)
         dry_run=1
+        shift
+        ;;
+      --quiet|-q)
+        quiet=1
         shift
         ;;
       --help|-h)

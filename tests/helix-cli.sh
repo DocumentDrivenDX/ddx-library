@@ -266,7 +266,11 @@ if [[ "${MOCK_EXPECT_BEADS_DIRECT:-0}" == "1" && "${BEADS_DOLT_SERVER_MODE:-}" !
   exit 1
 fi
 
-payload="$*"
+stdin_payload=""
+if ! [[ -t 0 ]]; then
+  stdin_payload="$(cat)"
+fi
+payload="$* $stdin_payload"
 mode="${MOCK_BACKFILL_MODE:-complete}"
 
 record() {
@@ -374,13 +378,15 @@ make_workspace() {
 run_helix() {
   local root="$1"
   shift
+  local cmd="${1:-help}"
+  shift || true
   (
     cd "$root/work"
     HOME="$root/home" \
     PATH="$root/bin:$PATH" \
     MOCK_STATE_ROOT="$root/state" \
     HELIX_LIBRARY_ROOT="$repo_root/workflows/helix" \
-    bash "$repo_root/scripts/helix" "$@"
+    bash "$repo_root/scripts/helix" "$cmd" --quiet "$@"
   )
 }
 
