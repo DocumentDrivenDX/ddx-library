@@ -74,6 +74,7 @@ Environment:
   HELIX_AGENT         Default agent (codex or claude)
   BEADS_DOLT_SERVER_MODE
                       Set to 0 to force Beads sandbox/direct mode in the wrapper and spawned agent sessions
+  HELIX_AGENT_TIMEOUT Agent timeout in seconds (default: 900)
   HELIX_LIBRARY_ROOT  Override the library root that contains workflows/helix/
 
 Notes:
@@ -135,7 +136,7 @@ run_agent_prompt() {
   local prompt="$1"
   local prompt_bytes
   prompt_bytes="$(printf '%s' "$prompt" | wc -c)"
-  local agent_timeout="${HELIX_AGENT_TIMEOUT:-300}"
+  local agent_timeout="${HELIX_AGENT_TIMEOUT:-900}"
 
   case "$agent" in
     codex)
@@ -210,6 +211,26 @@ run_agent_prompt() {
               ' 2>/dev/null || true)"
               if [[ -n "$think" ]]; then
                 printf 'helix: [%s] 💭 %s\n' "$(date +%H:%M:%S)" "$think" >&2
+              fi
+              # Show tool result summaries (first line, truncated)
+              tool_result="$(printf '%s' "$line" | jq -r '
+                select(.type == "user")
+                | .message.content[]?
+                | select(.type == "tool_result")
+                | .content // ""
+                | if type == "array" then .[0].text // "" else . end
+                | split("\n")[0]
+                | .[0:120]
+              ' 2>/dev/null || true)"
+              if [[ -n "$tool_result" ]]; then
+                local is_err
+                is_err="$(printf '%s' "$line" | jq -r '
+                  select(.type == "user")
+                  | .message.content[]?
+                  | select(.type == "tool_result")
+                  | if .is_error then "!" else " " end
+                ' 2>/dev/null || true)"
+                printf 'helix: [%s]  %s %s\n' "$(date +%H:%M:%S)" "${is_err:-" "}" "$tool_result" >&2
               fi
               # Emit final result text to stdout
               result="$(printf '%s' "$line" | jq -r '
