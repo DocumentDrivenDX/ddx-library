@@ -163,7 +163,9 @@ run_agent_prompt() {
         fi
       else
         if (( ! quiet )); then
-          printf 'helix: [%s] claude -p <prompt %s bytes> (timeout %ss)\n' "$(date +%H:%M:%S)" "$prompt_bytes" "$agent_timeout" >&2
+          printf 'helix: [%s] claude -p (timeout %ss)\n' "$(date +%H:%M:%S)" "$agent_timeout" >&2
+          printf '%s\n' "$prompt" | sed 's/^/helix: │ /' >&2
+          printf 'helix: └─ %s bytes\n' "$prompt_bytes" >&2
         fi
 
         local claude_pid
@@ -177,15 +179,37 @@ run_agent_prompt() {
             --output-format stream-json \
             --verbose \
           | while IFS= read -r line; do
-              # Show tool names as they happen
-              tool_name="$(printf '%s' "$line" | jq -r '
+              # Show tool calls with key details
+              tool_info="$(printf '%s' "$line" | jq -r '
                 select(.type == "assistant")
                 | .message.content[]?
                 | select(.type == "tool_use")
-                | .name // empty
+                | .name as $n
+                | .input as $i
+                | if $n == "Read" then "\($n)(\($i.file_path // "" | split("/") | last))"
+                  elif $n == "Write" then "\($n)(\($i.file_path // "" | split("/") | last))"
+                  elif $n == "Edit" then "\($n)(\($i.file_path // "" | split("/") | last))"
+                  elif $n == "Glob" then "\($n)(\($i.pattern // ""))"
+                  elif $n == "Grep" then "\($n)(\($i.pattern // ""))"
+                  elif $n == "Bash" then "\($n)(\($i.command // "" | .[0:80]))"
+                  elif $n == "Agent" then "\($n)(\($i.description // ""))"
+                  elif $n == "Skill" then "\($n)(\($i.skill // ""))"
+                  else $n
+                  end
               ' 2>/dev/null || true)"
-              if [[ -n "$tool_name" ]]; then
-                printf 'helix: [%s] → %s\n' "$(date +%H:%M:%S)" "$tool_name" >&2
+              if [[ -n "$tool_info" ]]; then
+                printf 'helix: [%s] → %s\n' "$(date +%H:%M:%S)" "$tool_info" >&2
+              fi
+              # Show thinking/text progress
+              think="$(printf '%s' "$line" | jq -r '
+                select(.type == "assistant")
+                | .message.content[]?
+                | select(.type == "thinking")
+                | .thinking // empty
+                | .[0:500]
+              ' 2>/dev/null || true)"
+              if [[ -n "$think" ]]; then
+                printf 'helix: [%s] 💭 %s\n' "$(date +%H:%M:%S)" "$think" >&2
               fi
               # Emit final result text to stdout
               result="$(printf '%s' "$line" | jq -r '
