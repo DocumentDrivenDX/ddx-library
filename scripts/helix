@@ -651,6 +651,113 @@ run_spawn() {
   printf 'helix: spawned %d agents with session prefix %s\n' "$count" "$session_name" >&2
 }
 
+recover_prompt() {
+  local bead_id="$1"
+  local bead_info="$2"
+  local git_status="$3"
+  local log_tail="$4"
+  local sandbox_note
+  sandbox_note="$(beads_prompt_note)"
+  cat <<EOF
+You are recovering from a crashed or timed-out HELIX implementation session.
+
+Bead ${bead_id} is in_progress but the previous agent session ended without
+closing it. Your job is to assess the partial work and either complete it
+or revert it cleanly.
+
+Read and follow the action at ${helix_docs_root}/actions/implementation.md.
+Execute in the current repository rooted at ${target_root}.
+${sandbox_note}
+
+BEAD STATE:
+${bead_info}
+
+GIT STATUS (uncommitted changes):
+${git_status}
+
+PREVIOUS SESSION LOG (last 50 lines):
+${log_tail}
+
+RECOVERY RULES:
+1. If the worktree has uncommitted changes related to this bead:
+   - Read the changed files and assess quality
+   - If the work looks substantially complete: run tests, fix failures, commit, close the bead
+   - If the work is broken or too incomplete: revert the changes with git checkout on the affected files, unclaim the bead with bd update <id> --status open
+2. If the worktree is clean (no uncommitted changes):
+   - The previous session either committed successfully or never started editing
+   - Check if the bead's acceptance criteria are already met
+   - If met: close the bead
+   - If not met: unclaim with bd update <id> --status open so the next cycle picks it up fresh
+3. CRITICAL: If tests fail after your changes, fix them. 99% of test failures are caused by your changes. Retry up to 3 times. Never commit broken work.
+
+Do the work — do not just describe what you would do.
+Session log: ${helix_log}
+EOF
+}
+
+run_recovery() {
+  local bead_id="$1"
+  local bead_info="$2"
+  local git_status="$3"
+  local log_tail="$4"
+  run_agent_prompt "$(recover_prompt "$bead_id" "$bead_info" "$git_status" "$log_tail")"
+}
+
+recover_orphaned_beads() {
+  # Find in-progress helix beads that might be orphaned from a crashed session
+  local in_progress
+  in_progress="$(bd_cmd list --status in_progress --label helix --json 2>/dev/null || echo '[]')"
+  local count
+  count="$(printf '%s' "$in_progress" | jq 'length' 2>/dev/null || echo 0)"
+
+  if (( count == 0 )); then
+    return 0
+  fi
+
+  printf 'helix: found %s in-progress bead(s), checking for orphans...\n' "$count" >&2
+
+  local i
+  for ((i = 0; i < count; i++)); do
+    local bead_id
+    bead_id="$(printf '%s' "$in_progress" | jq -r ".[$i].id" 2>/dev/null)"
+
+    # Check if another helix process is already working on this bead
+    if pgrep -f "helix.*implement.*${bead_id}" >/dev/null 2>&1; then
+      printf 'helix: bead %s is being worked on by another process, skipping\n' "$bead_id" >&2
+      continue
+    fi
+
+    printf 'helix: bead %s is orphaned (in_progress, no active agent)\n' "$bead_id" >&2
+
+    # Gather context for recovery
+    local bead_info
+    bead_info="$(bd_cmd show "$bead_id" 2>/dev/null || echo "unable to load bead")"
+    local git_status
+    git_status="$(cd "$target_root" && git diff --stat 2>/dev/null || echo "clean")"
+    local log_tail=""
+    local latest_log
+    latest_log="$(ls -t "$helix_log_dir"/helix-*.log 2>/dev/null | head -1 || true)"
+    if [[ -n "$latest_log" ]]; then
+      log_tail="$(tail -50 "$latest_log" 2>/dev/null || true)"
+    fi
+
+    if [[ "$git_status" == "clean" || -z "$git_status" ]]; then
+      # No uncommitted changes — just unclaim the bead
+      printf 'helix: worktree is clean, unclaiming bead %s\n' "$bead_id" >&2
+      bd_cmd update "$bead_id" --status open 2>/dev/null || true
+    else
+      # Uncommitted changes exist — ask the agent to recover
+      printf 'helix: worktree has changes, running recovery for bead %s\n' "$bead_id" >&2
+      if ! run_recovery "$bead_id" "$bead_info" "$git_status" "$log_tail"; then
+        printf 'helix: recovery failed for bead %s, reverting and unclaiming\n' "$bead_id" >&2
+        # Last resort: revert uncommitted changes and unclaim
+        (cd "$target_root" && git checkout -- . 2>/dev/null || true)
+        bd_cmd update "$bead_id" --status open 2>/dev/null || true
+      fi
+    fi
+  done
+}
+
 run_loop() {
   local cycles=0
   local post_drain_alignment_ran=0
@@ -659,6 +766,9 @@ run_loop() {
   need_cmd jq
   require_live_beads
 
+  # Recover orphaned beads from crashed sessions before starting the loop
+  recover_orphaned_beads
+
   while true; do
     local ready_count
     ready_count="$(helix_ready_count)"
@@ -666,8 +776,12 @@ run_loop() {
     if (( ready_count > 0 )); then
       printf 'helix: ready=%s, cycle=%s\n' "$ready_count" "$((cycles + 1))" >&2
       if ! run_implementation; then
-        printf 'helix: implementation failed during cycle %s\n' "$((cycles + 1))" >&2
-        return 1
+        printf 'helix: implementation failed during cycle %s (will recover on next cycle)\n' "$((cycles + 1))" >&2
+        # Don't exit — the orphan recovery at the top of the next iteration
+        # will detect the in-progress bead and handle it.
+        # Sleep briefly to avoid tight retry loops.
+        sleep 5
+        recover_orphaned_beads
       fi
       cycles=$((cycles + 1))
       post_drain_alignment_ran=0
