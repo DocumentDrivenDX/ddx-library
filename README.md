@@ -14,7 +14,13 @@ Full TDD cycle — from empty repo to passing tests — driven by Claude with th
 
 ### Claude Code Plugin
 
-Install as a Claude Code plugin in two steps:
+Install the DDx Library plugin with the NPX marketplace installer:
+
+```bash
+npx claude-plugins install @DocumentDrivenDX/ddx-library/ddx
+```
+
+For Claude Code's native plugin flow:
 
 ```bash
 # Add the repository as a marketplace
