@@ -8,6 +8,7 @@ on:
       - 'commands/**'
       - 'skills/**'
       - 'agents/**'
+      - 'package.yaml'
       - 'lefthook.yml'
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - 'commands/**'
       - 'skills/**'
       - 'agents/**'
+      - 'package.yaml'
       - 'lefthook.yml'
 
 jobs:

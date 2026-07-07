@@ -1,7 +1,7 @@
 {
   "name": "ddx-library",
   "owner": {
-    "name": "easel"
+    "name": "DocumentDrivenDX"
   },
   "metadata": {
     "description": "DDx Library - Document-Driven Development eXperience plugins"

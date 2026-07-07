@@ -18,22 +18,21 @@ Install as a Claude Code plugin in two steps:
 
 ```bash
 # Add the repository as a marketplace
-/plugin marketplace add easel/ddx-library
+/plugin marketplace add DocumentDrivenDX/ddx-library
 
 # Install the plugin
 /plugin install ddx@ddx-library
 ```
 
 This gives you:
-- **Skills**: `/ddx:helix` (TDD workflow), `/ddx:review` (critical review), `/ddx:grind` (continuous queue execution), `/ddx:execute` (single bead), `/ddx:triage` (queue health), `/ddx:handoff` (agent handoff review), `/ddx:helix-alignment-review` (drift analysis)
+- **Skills**: DDx operational skills for beads, workers, reviews, agents, status, and queue stewardship; plus `/ddx:helix` (TDD workflow), `/ddx:review` (critical review), `/ddx:grind` (continuous queue execution), `/ddx:execute` (single bead), `/ddx:triage` (queue health), `/ddx:handoff` (agent handoff review), `/ddx:helix-alignment-review` (drift analysis)
 - **Commands**: `/ddx:prd`, `/ddx:code-review`, `/ddx:commit-hooks`, `/ddx:github-actions`, `/ddx:docs`, `/ddx:gitignore`, `/ddx:create-workflow`
-- **Agents**: Systems architect, TDD test engineer, strict code reviewer, QA analyst
 
 ## Contents
 
 - **commands/** - Claude Code slash commands
 - **skills/** - Auto-invoked Claude Code skills (HELIX workflow)
-- **agents/** - Specialized Claude Code agents
+- **agents/** - Specialized agent prompts retained as library resources
 - **prompts/** - AI prompts and instructions for various development tasks
 - **personas/** - AI personality definitions for consistent interactions
 - **workflows/** - Complete development methodologies (HELIX, etc.)
@@ -47,7 +46,7 @@ Clone and install locally to test changes:
 
 ```bash
 # Clone the repository
-git clone https://github.com/easel/ddx-library.git
+git clone https://github.com/DocumentDrivenDX/ddx-library.git
 cd ddx-library
 
 # Test as a local plugin
@@ -62,10 +61,12 @@ claude --plugin-dir /path/to/ddx-library
 ```
 ddx-library/
 ├── .claude-plugin/
-│   └── plugin.json      # Plugin manifest
+│   ├── plugin.json      # Claude Code plugin manifest
+│   └── marketplace.json # Claude Code marketplace descriptor
+├── package.yaml         # DDx package manifest
 ├── commands/            # Slash commands (/ddx:*)
 ├── skills/              # Auto-invoked skills
-├── agents/              # Specialized agents
+├── agents/              # Specialized agent prompt resources
 └── .mcp.json            # MCP server configs
 ```
 
@@ -73,7 +74,7 @@ ddx-library/
 
 - **commands/*.md** - Add or modify slash commands
 - **skills/*/SKILL.md** - Add or modify auto-invoked skills
-- **agents/*.md** - Add or modify specialized agents
+- **agents/*.md** - Add or modify specialized agent prompt resources
 - **workflows/** - Add or modify workflow definitions
 - **prompts/** - Add or modify standalone prompts
 
