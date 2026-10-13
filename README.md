@@ -97,4 +97,4 @@ This library is open source software licensed under the MIT License.
 
 ## Related Projects
 
-- [HELIX Workflow](./workflows/helix/) - Six-phase AI-assisted development methodology
+- [HELIX Workflow](./workflows/helix/) - Bundled snapshot of the HELIX methodology. The current version, with seven activities and the `/helix` skill, lives in [DocumentDrivenDX/helix](https://github.com/DocumentDrivenDX/helix)
